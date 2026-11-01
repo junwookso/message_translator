@@ -1,0 +1,7 @@
+.git
+bin
+*.test
+coverage.out
+data
+*.db
+*.db-*

@@ -1,0 +1,58 @@
+x-model-artifacts: &model-artifacts
+  MODEL_REPO: "${MODEL_REPO:-google/gemma-4-E4B-it-qat-q4_0-gguf}"
+  MODEL_REVISION: "${MODEL_REVISION:-4b4a2c1d584be7264f87aac328a1bc739ce81b6c}"
+  MODEL_FILE: "${MODEL_FILE:-gemma-4-E4B_q4_0-it.gguf}"
+  LLAMA_CPP_IMAGE: "${LLAMA_CPP_IMAGE:-ghcr.io/ggml-org/llama.cpp@sha256:c50671c463e746cdccf2c6e77ffd6d77dca2e95290e54ca5ba5c7f524c33e234}"
+
+services:
+  api:
+    build:
+      context: ./api
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *model-artifacts
+      APP_ENV: "${APP_ENV:-dev}"
+      MODEL_MODE: "${MODEL_MODE:-remote}"
+      PORT: "8080"
+      MODEL_API_URL: "${MODEL_API_URL-http://model:8080/v1/chat/completions}"
+      MODEL_NAME: "${MODEL_NAME:-GEMMA_4_E4B}"
+      MODEL_VERSION: "${MODEL_VERSION:-GEMMA_4_E4B_Q4_0_V1}"
+      PROMPT_VERSION: "${PROMPT_VERSION:-V1}"
+      CACHE_DB_PATH: /data/cache.db
+      CACHE_ENABLED: "${CACHE_ENABLED:-true}"
+      MODEL_TIMEOUT: "${MODEL_TIMEOUT:-120s}"
+      MODEL_PARALLEL: "${MODEL_PARALLEL:-2}"
+      API_MAX_INFLIGHT: "${API_MAX_INFLIGHT:-2}"
+      API_MAX_QUEUE: "${API_MAX_QUEUE:-4}"
+      API_QUEUE_TIMEOUT: "${API_QUEUE_TIMEOUT:-5s}"
+      API_STOP_GRACE_PERIOD: "${API_STOP_GRACE_PERIOD:-150s}"
+    stop_grace_period: "${API_STOP_GRACE_PERIOD:-150s}"
+    volumes:
+      - api-data:/data
+    depends_on:
+      model:
+        condition: service_started
+
+  model:
+    build:
+      context: ./model_service
+      args:
+        LLAMA_CPP_IMAGE: "${LLAMA_CPP_IMAGE:-ghcr.io/ggml-org/llama.cpp@sha256:c50671c463e746cdccf2c6e77ffd6d77dca2e95290e54ca5ba5c7f524c33e234}"
+    environment:
+      <<: *model-artifacts
+      LLAMA_ARG_ALIAS: "${MODEL_NAME:-GEMMA_4_E4B}"
+      MODEL_PARALLEL: "${MODEL_PARALLEL:-2}"
+    volumes:
+      - model-cache:/models
+    # Podman OCI builds may omit the Dockerfile HEALTHCHECK.
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30m
+      retries: 6
+
+volumes:
+  model-cache:
+  api-data:
